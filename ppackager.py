@@ -72,6 +72,16 @@ def ensure_git():
             run(['git', 'remote', 'add', 'origin', remote])
             run('git push --set-upstream origin master')
 
+    origin_match = search(r'Fetch URL: (.+)', run('git remote show -n origin'))
+    if origin_match:
+        origin = origin_match.group(1)
+        if origin.startswith('https://'):
+            if yes_or_no('git_ssh', 'Using HTTPS origin ({}). Switch to ssh?'.format(origin), True):
+                extract_pattern = 'https://(.+?)/(.+?)/(.+?)(?:.git)?$'
+                domain, user, repo = re.match(extract_pattern, origin).groups()
+                new_origin = 'git@{}:{}/{}'.format(domain, user, repo)
+                run(['git', 'remote', 'set-url', 'origin', new_origin])
+
     status = run('git status --porcelain')
     if search(r'^\?\? ', status) or search(r'^\s*M ', status):
         print('Repository has uncommitted files:')
@@ -84,11 +94,6 @@ def ensure_git():
         if yes_or_no('git_sync', '{} of remote by {} commits.. Perform sync now?'.format(direction.title(), number), True):
             run('git merge')
             run('git push')
-
-    #run('git pull')
-    #run('git push origin master')
-
-    #print(run('git status'))
             
 if __name__ == '__main__':
     ensure_git()
