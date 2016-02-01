@@ -72,17 +72,18 @@ def ensure_git():
             run(['git', 'remote', 'add', 'origin', remote])
             run('git push --set-upstream origin master')
 
-    status = run('git status --porcelain --branch')
-    if search(r'^\?\? ', status) or search(r'^M ', status):
+    status = run('git status --porcelain')
+    if search(r'^\?\? ', status) or search(r'^\s*M ', status):
         print('Repository has uncommitted files:')
         print(re.sub('^##.+\n?', '', status))
         print('You may want to clean them up first.')
 
-    # TODO: check porcelain format in this cases.
-    if 'ahead' in status or 'behind' in status:
-        if yes_or_no('git_sync', 'Out of sync with remote. Perform sync now?', True):
-            print(run('git merge'))
-            print(run('git push'))
+    sync_status = search(r'^## .+? \[(ahead|behind) (\d+)\]', run('git status --porcelain --branch'))
+    if sync_status:
+        direction, number = sync_status.groups(1)
+        if yes_or_no('git_sync', '{} of remote by {} commits.. Perform sync now?'.format(direction.title(), number), True):
+            run('git merge')
+            run('git push')
 
     #run('git pull')
     #run('git push origin master')
