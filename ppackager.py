@@ -139,7 +139,7 @@ class Supervisor(object):
                 for status, name in re.findall('(..)\s(.+)', status):
                     if status == '??':
                         self.run(['git', 'add', name])
-                os.system('git commit -a')
+                os.system('git commit -a --quiet')
 
         origin_match = re.search(
             r'Fetch URL: (.+)', self.run('git remote show -n origin'))
