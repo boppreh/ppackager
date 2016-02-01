@@ -22,22 +22,60 @@ from pathlib import Path
 from subprocess import check_output, CalledProcessError, STDOUT
 
 here = Path('.')
-
 OBLIGATORY = object()
+
+help_messages = {
+    'git_init': """This folder is not a Git repository. If you say yes, a new empty local repository will be created here. If you choose no, we continue from here ignoring everything related to Git.""",
+    'create_gitignore': """ """,
+    'set_github': """ """,
+    'git_ssh': """ """,
+    'git_sync': """ """,
+    'commit_dirty': """ """,
+}
+
 class Supervisor(object):
+    def __init__(self, options=None):
+        self.options = options if options is not None else {}
+
     def ask(self, tag, question, default=OBLIGATORY):
+        if tag in self.options:
+            return self.options[tag]
+
         while True:
             response = input(question + ' ')
-            if response:
+            if response == '?':
+                print('\n\n' + help_messages[tag] + '\n\n')
+            elif response:
+                if response != default:
+                    self.options[tag] = response
                 return response
             elif default is not OBLIGATORY:
                 return default
 
     def yes_or_no(self, tag, question, default):
+        if tag in self.options:
+            return self.options[tag]
+
         if default == True:
-            return not input(question + ' [Y/n] ').lower().startswith('n')
+            response = input(question + ' [Y/n] ').lower()
         else:
-            return not input(question + ' [y/N] ').lower().startswith('y')
+            response = input(question + ' [y/N] ').lower()
+
+        if response == '?':
+            print('\n\n' + help_messages[tag] + '\n\n')
+            return self.yes_or_no(tag, question, default)
+        elif response == '':
+            return default
+        elif response.startswith('y'):
+            if default is False:
+                self.options[tag] = True
+            return True
+        elif response.startswith('n'):
+            if default is True:
+                self.options[tag] = False
+            return False
+        else:
+            return self.yes_or_no(tag, question, default)
 
     def run(self, command, verbose=False):
         if verbose:
@@ -68,28 +106,34 @@ class Supervisor(object):
                 self.run(['git', 'remote', 'add', 'origin', remote])
                 self.run('git push --set-upstream origin master')
 
-        origin_match = re.search(r'Fetch URL: (.+)', self.run('git remote show -n origin'))
-        if origin_match:
-            origin = origin_match.group(1)
-            if origin.startswith('https://'):
-                if self.yes_or_no('git_ssh', 'Using HTTPS origin ({}). Switch to ssh?'.format(origin), True):
-                    extract_pattern = 'https://(.+?)/(.+?)/(.+?)(?:.git)?$'
-                    domain, user, repo = re.match(extract_pattern, origin).groups()
-                    new_origin = 'git@{}:{}/{}'.format(domain, user, repo)
-                    self.run(['git', 'remote', 'set-url', 'origin', new_origin])
-
         status = self.run('git status --porcelain')
         if re.search(r'^\?\? ', status) or re.search(r'^\s*M ', status):
             print('Repository has uncommitted files:')
-            print(re.sub('^##.+\n?', '', status))
+            print(status)
+            if self.yes_or_no('commit_dirty', 'Do you want to commit them now?', True):
+                pass
             print('You may want to clean them up first.')
 
-        sync_status = re.search(r'^## .+? \[(ahead|behind) (\d+)\]', self.run('git status --porcelain --branch'))
-        if sync_status:
-            direction, number = sync_status.groups(1)
-            if self.yes_or_no('git_sync', '{} of remote by {} commits.. Perform sync now?'.format(direction.title(), number), True):
-                self.run('git merge')
-                self.run('git push')
+        origin_match = re.search(r'Fetch URL: (.+)', self.run('git remote show -n origin'))
+        if origin_match:
+            origin = origin_match.group(1)
+            if origin.startswith('https://github.com'):
+                if self.yes_or_no('git_ssh', 'Using HTTPS origin ({}). Switch to ssh?'.format(origin), True):
+                    extract_pattern = 'https://github.com/(.+?)/(.+?)(?:.git)?$'
+                    domain, user, repo = re.match(extract_pattern, origin).groups()
+                    new_origin = 'git@github.com:{}/{}'.format(domain, user, repo)
+                    self.run(['git', 'remote', 'set-url', 'origin', new_origin])
+
+            sync_status = re.search(r'^## .+? \[(ahead|behind) (\d+)\]', self.run('git status --porcelain --branch'))
+            if sync_status:
+                direction, number = sync_status.groups(1)
+                if self.yes_or_no('git_sync', '{} of remote by {} commits ({}). Perform sync now?'.format(direction.title(), number, origin), True):
+                    self.run('git merge')
+                    self.run('git push')
             
 if __name__ == '__main__':
-    Supervisor().ensure_git()
+    s = Supervisor()
+    try:
+        s.ensure_git()
+    finally:
+        print(s.options)
