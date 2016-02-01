@@ -18,6 +18,7 @@ Git:
 [x] Is clean
 """
 import re
+import os
 from pathlib import Path
 from subprocess import check_output, CalledProcessError, STDOUT
 
@@ -111,8 +112,10 @@ class Supervisor(object):
             print('Repository has uncommitted files:')
             print(status)
             if self.yes_or_no('commit_dirty', 'Do you want to commit them now?', True):
-                pass
-            print('You may want to clean them up first.')
+                for status, name in re.findall('(..)\s(.+)', status):
+                    if status == '??':
+                        self.run(['git', 'add', name])
+                os.system('git commit -a')
 
         origin_match = re.search(r'Fetch URL: (.+)', self.run('git remote show -n origin'))
         if origin_match:
